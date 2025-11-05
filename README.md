@@ -1,43 +1,43 @@
 # Yield402
 
-Auto-Yield Treasury dla x402 Merchantow: po otrzymaniu platnosci USDC na Solanie, nadwyzki trafiaja do DeFi (Kamino/Solend). Monorepo: API (Node/TS), Dashboard (Next.js), opcjonalny SDK.
+Auto-Yield Treasury for x402 merchants: after receiving USDC payments on Solana, surplus funds are automatically deposited into DeFi (Kamino/Solend). Monorepo: API (Node/TS), Dashboard (Next.js), optional SDK.
 
-## Struktura
+## Structure
 
-- `apps/api` – Fastify + TypeScript, endpointy x402 (stuby) i healthcheck
-- `apps/web` – Next.js, prosty dashboard (placeholder)
-- `packages/treasury-sdk` – interfejsy i stubs dla logiki treasury/DeFi
+- `apps/api` – Express + TypeScript, x402 endpoints (stubs) and healthcheck
+- `apps/web` – Next.js, simple dashboard placeholder
+- `packages/treasury-sdk` – interfaces and stubs for treasury/DeFi logic
 
-## Szybki start
+## Quick start
 
-1. Zainstaluj pnpm i turbo (globalnie opcjonalnie):
+1. Install pnpm (turbo is handled per-repo):
    - `npm i -g pnpm`
-2. Zainstaluj zaleznosci w repo:
+2. Install dependencies:
    - `pnpm install`
-3. Uruchom dev (rownolegle API i WEB):
+3. Run dev (API and Web in parallel):
    - `pnpm dev`
 
-## Zmienne srodowiskowe (MVP)
+## Environment variables (MVP)
 
-Skonfiguruj zmienne (plik `.env` w `apps/api` i `apps/web` lub srodowiskowe):
+Configure variables (use `.env` in `apps/api` and `apps/web`, or system env):
 
-- Wspolne:
+- Common:
   - `SOLANA_CLUSTER=devnet`
-  - `USDC_MINT=<adres USDC na devnecie>`
+  - `USDC_MINT=<USDC mint address on devnet>`
   - `DEFI_ADAPTER=kamino|solend`
   - `CASH_BUFFER_USDC=10`
 - API:
   - `API_PORT=4000`
-  - `MERCHANT_WALLET_SECRET=<secret key Phantom devnet>`
-  - `CORBITS_API_KEY=<opcjonalnie>`
-  - `CORBITS_FACILITATOR_ID=<opcjonalnie>`
-- WEB:
+  - `MERCHANT_WALLET_SECRET=<Phantom devnet secret key>`
+  - `CORBITS_API_KEY=<optional>`
+  - `CORBITS_FACILITATOR_ID=<optional>`
+- Web:
   - `NEXT_PUBLIC_API_BASE_URL=http://localhost:4000`
 
 ## Roadmap (MVP)
 
-- API: implementacja `x402/price`, `x402/verify`, `x402/settled`
-- Worker: prosty rebalancer (nadwyzki -> DeFi)
-- Adapter DeFi: Kamino (start), fallback Solend
+- API: implement `x402/price`, `x402/verify`, `x402/settled`
+- Worker: simple rebalancer (surplus -> DeFi)
+- DeFi adapter: Kamino (start), fallback Solend
 - Dashboard: cash buffer, in-yield, APY
 
