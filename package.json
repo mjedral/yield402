@@ -1,0 +1,19 @@
+{
+  "name": "yield402",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Yield402 monorepo: x402 API + auto-yield treasury + dashboard",
+  "license": "MIT",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint --continue --no-cache || true",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3",
+    "turbo": "^2.1.1",
+    "typescript": "^5.6.3"
+  }
+}
+
