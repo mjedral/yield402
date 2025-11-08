@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Yield402 monorepo: x402 API + auto-yield treasury + dashboard",
   "license": "MIT",
+  "packageManager": "pnpm@10.20.0",
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
