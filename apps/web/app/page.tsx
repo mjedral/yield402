@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import { Wallet, TrendingUp, DollarSign, Percent, ArrowUpCircle, ArrowDownCircle, RefreshCw } from "lucide-react";
 import { TreasuryModal } from "./components/TreasuryModal";
 import { TransactionsTable } from "./components/TransactionsTable";
+import { RebalancerSettings } from "./components/RebalancerSettings";
 import { Toaster } from "react-hot-toast";
 import Link from "next/link";
 
 interface Balances {
   cashBufferUsdc: number;
   inYieldUsdc: number;
-  estimatedApyPercent: number | null;
+  estimatedApyPercent: number | null; // Actually APR from Solend
   lastUpdated?: string;
 }
 
@@ -115,7 +116,7 @@ export default function TreasuryDashboard() {
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Percent className="w-4 h-4 text-gray-600" />
-                <p className="text-xs font-medium text-gray-600">Current APY</p>
+                <p className="text-xs font-medium text-gray-600">Current APR</p>
               </div>
               <p className="text-2xl font-semibold text-gray-900">
                 {balances.estimatedApyPercent !== null && typeof balances.estimatedApyPercent === "number"
@@ -160,6 +161,9 @@ export default function TreasuryDashboard() {
             </Link>
           </div>
         </div>
+
+        {/* Rebalancer Settings */}
+        <RebalancerSettings />
 
         {/* Transactions History */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

@@ -54,6 +54,13 @@ async function start() {
         ],
     });
 
+    // Rebalancer configuration (mutable at runtime)
+    let rebalancerConfig = {
+        minBufferUsdc: Number(process.env.CASH_BUFFER_USDC || '10'),
+        minDepositUsdc: Number(process.env.MIN_DEPOSIT_USDC || '1'),
+        cooldownSec: Number(process.env.REBALANCE_COOLDOWN_SEC || '180'),
+    };
+
     // --- Simple rebalancer (MVP) with mock adapter ---
     // Choose adapter: start with Solend
     // Helper: pick RPC URL (env override per network) or fall back to clusterApiUrl
@@ -75,35 +82,39 @@ async function start() {
             })
             : new MockDefiAdapter();
     logger.info(`[treasury] Using ${process.env.DEFI_ADAPTER === 'solend' ? 'Solend (on-chain)' : 'Mock'} DeFi adapter`);
-    const minBufferUsdc = Number(process.env.CASH_BUFFER_USDC || '10');
-    const minDepositUsdc = Number(process.env.MIN_DEPOSIT_USDC || '1'); // ignore tiny excess
-    const cooldownSec = Number(process.env.REBALANCE_COOLDOWN_SEC || '180'); // throttle deposits
     const rebalancerConn = new Connection(getRpcUrlByNetwork(network), 'confirmed');
     let lastDepositAt = 0;
     async function triggerRebalance(reason: string) {
         try {
+            console.log(`[rebalancer] Triggered by: ${reason}`);
             const now = Date.now();
-            if (now - lastDepositAt < cooldownSec * 1000) {
-                // eslint-disable-next-line no-console
-                console.log(`[rebalancer] ${reason}: cooldown active (${cooldownSec}s)`);
+            if (now - lastDepositAt < rebalancerConfig.cooldownSec * 1000) {
+                console.log(`[rebalancer] Cooldown active (${rebalancerConfig.cooldownSec}s remaining)`);
                 return;
             }
+            console.log('[rebalancer] Fetching merchant USDC balance...');
             const cash = await getMerchantUsdcBalance(rebalancerConn, payTo, process.env.USDC_MINT || '');
-            const excess = Math.max(0, Number((cash - minBufferUsdc).toFixed(2)));
-            if (excess >= minDepositUsdc) {
+            console.log(`[rebalancer] Cash balance: ${cash} USDC`);
+            console.log(`[rebalancer] Min buffer: ${rebalancerConfig.minBufferUsdc} USDC`);
+            console.log(`[rebalancer] Min deposit: ${rebalancerConfig.minDepositUsdc} USDC`);
+
+            const excess = Math.max(0, Number((cash - rebalancerConfig.minBufferUsdc).toFixed(2)));
+            console.log(`[rebalancer] Calculated excess: ${excess} USDC`);
+
+            if (excess >= rebalancerConfig.minDepositUsdc) {
+                console.log(`[rebalancer] Depositing ${excess} USDC to Solend...`);
                 const sig = await depositExcess(adapter, excess);
                 if (sig) {
                     lastDepositAt = now;
-                    // eslint-disable-next-line no-console
-                    console.log(`[rebalancer] ${reason}: deposited ${excess} USDC via ${adapter.name} (tx=${sig})`);
+                    console.log(`[rebalancer] SUCCESS: Deposited ${excess} USDC (tx=${sig})`);
+                } else {
+                    console.log('[rebalancer] Deposit returned no signature');
                 }
             } else {
-                // eslint-disable-next-line no-console
-                console.log(`[rebalancer] ${reason}: no eligible excess (cash=${cash}, buffer=${minBufferUsdc}, minDeposit=${minDepositUsdc})`);
+                console.log(`[rebalancer] No eligible excess to deposit (need at least ${rebalancerConfig.minDepositUsdc} USDC excess)`);
             }
         } catch (e) {
-            // eslint-disable-next-line no-console
-            console.warn('[rebalancer] failed', e);
+            console.error('[rebalancer] ERROR:', e);
         }
     }
     // periodic
@@ -205,6 +216,22 @@ async function start() {
             logger.info({ tx: body.txSignature, amount: body.amount }, 'payment_received');
             console.log('Payment logged');
 
+            // Save x402 payment to database
+            try {
+                await prisma.treasuryTransaction.create({
+                    data: {
+                        type: 'payment',
+                        amountUsdc: Number(body.amount) / 1_000_000, // Convert from base units to USDC
+                        protocol: 'x402',
+                        status: 'completed',
+                        txSignature: body.txSignature,
+                    },
+                });
+                console.log('Payment saved to database');
+            } catch (dbErr) {
+                console.error('Failed to save payment to database:', dbErr);
+            }
+
             // Hook for worker/rebalancer could be emitted here
             console.log('Triggering rebalancer...');
             triggerRebalance('settled');
@@ -217,6 +244,32 @@ async function start() {
             console.log('[ERROR] WEBHOOK ERROR:', err);
             console.log('========================================\n');
             return next(err);
+        }
+    });
+
+    // Rebalancer configuration endpoints
+    app.get('/rebalancer/config', (_req, res) => {
+        res.json(rebalancerConfig);
+    });
+
+    app.post('/rebalancer/config', (req, res) => {
+        try {
+            const { minBufferUsdc, minDepositUsdc, cooldownSec } = req.body;
+
+            if (typeof minBufferUsdc === 'number' && minBufferUsdc >= 0) {
+                rebalancerConfig.minBufferUsdc = minBufferUsdc;
+            }
+            if (typeof minDepositUsdc === 'number' && minDepositUsdc >= 0) {
+                rebalancerConfig.minDepositUsdc = minDepositUsdc;
+            }
+            if (typeof cooldownSec === 'number' && cooldownSec >= 0) {
+                rebalancerConfig.cooldownSec = cooldownSec;
+            }
+
+            console.log('[rebalancer] Configuration updated:', rebalancerConfig);
+            res.json({ ok: true, config: rebalancerConfig });
+        } catch (err) {
+            res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'Invalid configuration' } });
         }
     });
 
