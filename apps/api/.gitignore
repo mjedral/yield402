@@ -21,3 +21,5 @@ pnpm-debug.log*
 
 yield.plan.md
 
+
+/src/generated/prisma

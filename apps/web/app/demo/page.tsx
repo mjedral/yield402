@@ -20,6 +20,8 @@ export default function SubstackMockup() {
     const [unlocked, setUnlocked] = useState(false);
     const [status, setStatus] = useState<string>('Locked');
     const [error, setError] = useState<string | null>(null);
+    const [webhookStatus, setWebhookStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+    const [txSignature, setTxSignature] = useState<string | null>(null);
 
     const handleSubscribe = () => {
         if (email) {
@@ -31,18 +33,54 @@ export default function SubstackMockup() {
     const unlock = useCallback(async () => {
         setStatus('Connecting wallet...');
         setError(null);
+        setWebhookStatus('idle');
+        setTxSignature(null);
+
+        let capturedSignature: string | null = null;
+
         try {
             const phantom = window.phantom?.solana ?? window.solana;
             if (!phantom || !phantom.isPhantom) throw new Error('Phantom wallet not installed');
             await phantom.connect();
 
-            const envNet = process.env.NEXT_PUBLIC_NETWORK || 'solana-devnet';
-            const network = (envNet.startsWith('solana-') ? envNet.slice('solana-'.length) : envNet) as
-                'devnet' | 'testnet' | 'mainnet-beta';
-            const connection = new Connection(clusterApiUrl(network));
+            const network = (process.env.NEXT_PUBLIC_NETWORK || 'devnet') as 'devnet' | 'testnet' | 'mainnet-beta';
+
+            let rpcUrl = process.env.NEXT_PUBLIC_RPC_URL;
+            if (!rpcUrl) {
+                if (network === 'mainnet-beta') {
+                    rpcUrl = 'https://mainnet.helius-rpc.com/?api-key=public';
+                } else {
+                    rpcUrl = clusterApiUrl(network);
+                }
+            }
+            const connection = new Connection(rpcUrl);
+
             const usdcInfo = lookupKnownSPLToken(network, 'USDC');
             if (!usdcInfo) throw new Error('USDC mint not found');
             const mint = new PublicKey(usdcInfo.address);
+
+            // Wrap connection methods to capture signature
+            const originalSendRawTransaction = connection.sendRawTransaction.bind(connection);
+            connection.sendRawTransaction = async (rawTransaction: Buffer | Uint8Array, options?: any) => {
+                console.log('sendRawTransaction called');
+                const sig = await originalSendRawTransaction(rawTransaction, options);
+                capturedSignature = sig;
+                console.log('Captured transaction signature from sendRawTransaction:', sig);
+                return sig;
+            };
+
+            const originalSendTransaction = (connection as any).sendTransaction?.bind(connection);
+            if (originalSendTransaction) {
+                (connection as any).sendTransaction = async (...args: any[]) => {
+                    console.log('sendTransaction called');
+                    const sig = await originalSendTransaction(...args);
+                    capturedSignature = sig;
+                    console.log('Captured transaction signature from sendTransaction:', sig);
+                    return sig;
+                };
+            }
+
+            console.log('Transaction capture hooks installed');
 
             const wallet = {
                 network,
@@ -63,6 +101,86 @@ export default function SubstackMockup() {
 
             setUnlocked(true);
             setStatus('Unlocked');
+
+            console.log('Payment completed. Captured signature:', capturedSignature);
+
+            // If we didn't capture signature, try to get last transaction
+            if (!capturedSignature) {
+                console.log('Signature not captured, fetching last transaction from blockchain...');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+
+                try {
+                    console.log('Fetching signatures for address:', phantom.publicKey.toBase58());
+                    const signatures = await connection.getSignaturesForAddress(
+                        phantom.publicKey,
+                        { limit: 1 }
+                    );
+                    console.log('Found signatures:', signatures.length);
+                    if (signatures.length > 0 && signatures[0]) {
+                        capturedSignature = signatures[0].signature;
+                        console.log('Retrieved signature from blockchain:', capturedSignature);
+                    } else {
+                        console.warn('No signatures found for this address');
+                    }
+                } catch (e: any) {
+                    console.error('Failed to retrieve signature from blockchain:', e);
+                    console.error('Error details:', e.message || e);
+                }
+            }
+
+            // Call webhook if we have a signature
+            if (capturedSignature) {
+                console.log('Have signature, calling webhook...');
+                setTxSignature(capturedSignature);
+                setWebhookStatus('pending');
+                setStatus('Notifying backend...');
+
+                const webhookPayload = {
+                    txSignature: capturedSignature,
+                    network: network,
+                    mint: mint.toBase58(),
+                    payTo: process.env.NEXT_PUBLIC_MERCHANT_ADDRESS || '',
+                    amount: '10000',
+                };
+
+                console.log('========================================');
+                console.log('CALLING WEBHOOK /x402/settled');
+                console.log('========================================');
+                console.log('Payload:', JSON.stringify(webhookPayload, null, 2));
+                console.log('URL:', `${apiBase}/x402/settled`);
+
+                try {
+                    const webhookRes = await fetch(`${apiBase}/x402/settled`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(webhookPayload),
+                    });
+
+                    console.log('Response status:', webhookRes.status);
+                    const responseText = await webhookRes.text();
+                    console.log('Response body:', responseText);
+
+                    if (webhookRes.ok) {
+                        setWebhookStatus('success');
+                        console.log('Webhook called successfully!');
+                        console.log('========================================');
+                    } else {
+                        setWebhookStatus('error');
+                        console.error('Webhook failed!');
+                        console.error('Response:', responseText);
+                        console.log('========================================');
+                    }
+                } catch (webhookError) {
+                    setWebhookStatus('error');
+                    console.error('Webhook error:', webhookError);
+                    console.log('========================================');
+                }
+
+                setStatus('Unlocked');
+            } else {
+                console.warn('No signature captured, webhook not called');
+                console.warn('This means the transaction was not detected. Check if payment actually went through.');
+            }
         } catch (e: any) {
             setError(e?.message || String(e));
             setStatus('Error');
@@ -71,6 +189,41 @@ export default function SubstackMockup() {
 
     return (
         <div className="min-h-screen bg-white">
+            {/* Webhook status indicator - fixed in corner */}
+            {webhookStatus !== 'idle' && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: 16,
+                    right: 16,
+                    padding: '12px 16px',
+                    borderRadius: 8,
+                    background: webhookStatus === 'success' ? '#10b981' : webhookStatus === 'error' ? '#ef4444' : '#f59e0b',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    maxWidth: 300,
+                }}>
+                    <span style={{ fontSize: 18 }}>
+                        {webhookStatus === 'success' ? '✓' : webhookStatus === 'error' ? '✗' : '⏳'}
+                    </span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700 }}>
+                            {webhookStatus === 'success' ? 'Webhook Success!' : webhookStatus === 'error' ? 'Webhook Failed' : 'Processing...'}
+                        </div>
+                        {txSignature && (
+                            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.9, wordBreak: 'break-all' }}>
+                                {txSignature.slice(0, 8)}...{txSignature.slice(-8)}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Navigation */}
             <nav className="border-b border-gray-200 sticky top-0 bg-white z-50">
                 <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">

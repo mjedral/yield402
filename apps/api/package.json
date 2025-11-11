@@ -14,13 +14,17 @@
   "dependencies": {
     "@faremeter/info": "^0.6.0",
     "@faremeter/middleware": "^0.6.0",
-    "@solana/web3.js": "^1.98.4",
+    "@prisma/client": "^6.19.0",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.95.3",
+    "@solendprotocol/solend-sdk": "^0.14.26",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "helmet": "^7.2.0",
-    "pino": "^10.1.0",
-    "pino-http": "^11.0.0",
+    "pino": "^8.17.1",
+    "pino-http": "^8.5.0",
+    "prisma": "^6.19.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
