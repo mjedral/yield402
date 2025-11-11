@@ -6,6 +6,8 @@ Auto-Yield Treasury Management for x402 Merchants on Solana.
 
 Yield402 automatically manages treasury for merchants accepting x402 payments. After receiving USDC payments on Solana, the system automatically deposits surplus funds into Solend lending protocol to generate yield while maintaining a configurable cash buffer.
 
+https://youtu.be/8AsT8VRM5a0
+
 ### Key Features
 
 - **x402 Payment Integration**: Accept USDC payments via x402 protocol with Corbits facilitator
